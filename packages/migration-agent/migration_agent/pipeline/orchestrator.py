@@ -16,6 +16,7 @@ from migration_agent.models.intermediate import IntermediateItem
 from migration_agent.pipeline.import_client import ImportApiClient
 from migration_agent.pipeline.mappings import MappingResolver
 from migration_agent.pipeline.media import CROP_SAFE, EXACT_FIT, FIT_WITH_BACKGROUND, AssetResult, process_item_media
+from migration_agent.pipeline.rewrite import rewrite_item_urls
 from migration_agent.pipeline.snapshot import build_intermediate, save_snapshot
 from migration_agent.pipeline.transform import transform
 from migration_agent.pipeline.validate import validate
@@ -331,6 +332,11 @@ class Pipeline:
                     item.import_state.target_url = content_result.target_url
                     report.total_imported += 1
                     report.assets_imported += 1 if item.hero else 0
+
+                    # Media URL rewriting (ADR-0006)
+                    rw = rewrite_item_urls(item)
+                    if rw["pending_count"] > 0:
+                        report.increment_warning("MEDIA_REWRITE_PENDING")
 
                     # Redirect: legacy_url → target_url
                     if item.routing.legacy_url and content_result.target_url:
