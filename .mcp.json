@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "redmine": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${HOME}/.claude/mcp-servers/redmine/server.js"]
+    }
+  }
+}
