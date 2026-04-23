@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from migration_agent.adapters.base import SourceAdapter
-from migration_agent.config.loader import load_import_policy
+from migration_agent.config.loader import load_import_policy, load_media_policy, load_sources
 from migration_agent.logger import log
 from migration_agent.models.batch import BatchReport
 from migration_agent.models.intermediate import IntermediateItem
+from migration_agent.pipeline.media import CROP_SAFE, EXACT_FIT, FIT_WITH_BACKGROUND, process_item_media
 from migration_agent.pipeline.snapshot import build_intermediate, save_snapshot
 from migration_agent.pipeline.transform import transform
 from migration_agent.pipeline.validate import validate
@@ -53,6 +54,7 @@ class Pipeline:
         self.published_after = published_after
         self.modified_after = modified_after
         self.batch_id = batch_id or str(uuid.uuid4())
+        self._config_dir = config_dir
         self.policy = load_import_policy(config_dir)
         self._started_at = datetime.now(timezone.utc).isoformat()
 
@@ -108,8 +110,40 @@ class Pipeline:
                 # Fase 4 — Validate
                 item = validate(item, self.policy)
 
-                items.append(item)
-                report.assets_detected += len(item.media) + (1 if item.hero else 0)
+                # Fase 4b — Media normalization (dry-run inclòs: processa localment)
+                assets_count = len(item.media) + (1 if item.hero else 0)
+                report.assets_detected += assets_count
+                if assets_count > 0:
+                    media_policy = load_media_policy(self._config_dir)
+                    all_sources = load_sources(self._config_dir)
+                    source_cfg = (
+                        all_sources.get("sources", {}).get(self.source_name)
+                        or {"allowed_media_domains": None, "timeout_seconds": 20}
+                    )
+                    artifacts_base = _artifacts_dir() / self.batch_id / "media"
+                    media_results_dict = process_item_media(
+                        item, media_policy, source_cfg, artifacts_base, batch_id=self.batch_id
+                    )
+                    all_asset_results = (
+                        media_results_dict.get("hero", []) + media_results_dict.get("media", [])
+                    )
+                    for ar in all_asset_results:
+                        if ar.import_status == "imported":
+                            report.assets_imported += 1
+                        elif ar.import_status == "failed":
+                            report.assets_failed += 1
+                        if ar.adaptation_strategy == EXACT_FIT:
+                            report.assets_exact_fit += 1
+                        elif ar.adaptation_strategy == CROP_SAFE:
+                            report.assets_crop_safe += 1
+                        elif ar.adaptation_strategy == FIT_WITH_BACKGROUND:
+                            report.assets_adapted_with_background += 1
+                        elif ar.adaptation_strategy is not None:
+                            report.assets_review_required += 1
+                        for w in ar.warnings:
+                            report.increment_warning(w)
+                        for e in ar.errors:
+                            report.increment_error(e)
 
                 status = item.import_state.import_status
                 if status == "ready":

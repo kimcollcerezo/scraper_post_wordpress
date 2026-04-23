@@ -29,6 +29,10 @@ class BatchReport:
     assets_detected: int = 0
     assets_imported: int = 0
     assets_failed: int = 0
+    assets_exact_fit: int = 0
+    assets_crop_safe: int = 0
+    assets_adapted_with_background: int = 0
+    assets_review_required: int = 0
 
     slugs_preserved: int = 0
     slugs_conflicted: int = 0
@@ -71,6 +75,10 @@ class BatchReport:
                 "total_detected": self.assets_detected,
                 "total_imported": self.assets_imported,
                 "total_failed": self.assets_failed,
+                "strategy_exact_fit": self.assets_exact_fit,
+                "strategy_crop_safe": self.assets_crop_safe,
+                "strategy_fit_with_background": self.assets_adapted_with_background,
+                "strategy_review_required": self.assets_review_required,
             },
             "seo": {
                 "slugs_preserved": self.slugs_preserved,

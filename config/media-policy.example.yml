@@ -29,6 +29,10 @@ og_image:
   aspect_ratio: "1.91:1"
   width: 1200
   height: 630
+  variants:
+    - name: og_image
+      width: 1200
+      height: 630
 
 formats_allowed: [webp, jpg, jpeg, png, gif, svg]
 max_bytes_default: 10485760  # 10MB
@@ -36,4 +40,11 @@ max_bytes_default: 10485760  # 10MB
 fail_on_media_error: false
 fail_on_size_exceeded: false
 fail_on_variant_error: false
-crop_loss_threshold: 0.30
+
+# ── Adaptation strategy (ADR-0006) ─────────────────────────────────────────────
+adaptation:
+  enable_background_fit: true
+  default_background: blur        # blur | color_dominant | project_color
+  allow_color_background: true
+  crop_loss_threshold: 0.30       # si crop perdria >30%, usar fit_with_background
+  fallback_background_color: "#f5f5f5"

@@ -1,6 +1,7 @@
 # ADR-0006 — Media Normalization Policy
 
 **Data:** 2026-04-23
+**Actualitzat:** 2026-04-24
 **Estat:** Acceptat
 **Autors:** CTO / Arquitectura
 **Projecte:** scraper-post-wordpress / sistema d'importació editorial Despertare
@@ -229,6 +230,198 @@ Per cada asset importat es conserven:
 - Sanititzar noms de fitxer (evitar path traversal).
 - No executar fitxers descarregats.
 - Timeouts per descàrrega configurables.
+
+---
+
+## Adaptation Strategy (addició 2026-04-24)
+
+### Context de l'addició
+
+Durant la migració real, moltes imatges legacy no compliran la media policy:
+- aspect ratio incorrecte (imatge vertical en layout horitzontal)
+- resolució insuficient
+- subjecte desplaçat (no centrat)
+- banners amb text incrustat
+- composicions no recropables sense pèrdua significativa
+
+El crop simple (fins i tot no destructiu) no és suficient. Cal una estratègia de **visual adaptation non-destructive** que permeti que qualsevol imatge es mostri correctament als layouts de Despertare sense destruir informació visual.
+
+---
+
+### Nou camp: `adaptation_strategy`
+
+Cada asset processrat rep un camp `adaptation_strategy` que documenta com s'ha adaptat:
+
+| Valor | Condició | Descripció |
+|---|---|---|
+| `exact_fit` | Compleix ratio i mida | Cap modificació d'aspecte |
+| `crop_safe` | Crop perd <30% àrea | Crop centrat acceptable |
+| `fit_with_background` | Crop perdria >30% o imatge massa petita | Canvas + background adaptat |
+| `review_required` | No es pot adaptar correctament | Marcat per revisió manual |
+
+---
+
+### Política de decisió
+
+```
+if aspect_ratio_ok and size_ok:
+    strategy = exact_fit
+elif crop_loss < crop_loss_threshold:
+    strategy = crop_safe
+elif enable_background_fit:
+    strategy = fit_with_background
+else:
+    strategy = review_required
+```
+
+`crop_loss_threshold` per defecte: `0.30` (30%).
+
+---
+
+### Estratègia `fit_with_background`
+
+Quan el crop destruiria massa informació visual, s'aplica `fit_with_background`:
+
+#### Pas 1 — Canvas
+
+Crear canvas amb les dimensions target (ex: 1200×900 per hero 4:3, 1200×630 per og-image).
+
+#### Pas 2 — Escalat i centrat
+
+- Escalar la imatge original mantenint el seu aspect ratio fins que càpiga al canvas.
+- Centrar la imatge escalada dins el canvas.
+- No estirar mai (distorsió prohibida).
+
+#### Pas 3 — Background (ordre de preferència)
+
+**Opció A — Blur background (default)**
+
+1. Duplicar la imatge original.
+2. Escalar-la per cobrir el canvas complet (sense mantenir ratio).
+3. Aplicar blur gaussià fort (σ ≥ 20px).
+4. Usar com a fons del canvas.
+5. Posar la imatge original escalada centrada al damunt.
+
+**Opció B — Color dominant**
+
+1. Extreure el color dominant de la imatge (kmeans o histograma).
+2. Generar fons sòlid o gradient radial amb aquest color.
+
+**Opció C — Color de projecte (fallback)**
+
+1. Usar `fallback_background_color` de `media-policy.yml`.
+2. Default: `#f5f5f5`.
+
+La selecció entre opcions es configura a `media-policy.yml`:
+
+```yaml
+adaptation:
+  enable_background_fit: true
+  default_background: blur      # blur | color_dominant | project_color
+  allow_color_background: true
+  crop_loss_threshold: 0.30
+  fallback_background_color: "#f5f5f5"
+```
+
+---
+
+### Metadades addicionals per asset adaptat
+
+```json
+{
+  "adaptation_strategy": "fit_with_background",
+  "background_type": "blur",
+  "original_aspect_ratio": "3:2",
+  "target_aspect_ratio": "4:3",
+  "padding_applied": true,
+  "crop_loss_estimated": 0.42
+}
+```
+
+---
+
+### Flux de normalització actualitzat
+
+```
+1.  Descarregar original
+2.  Detectar MIME real
+3.  Validar extensió vs MIME
+4.  Validar format permès
+5.  Validar mida màxima
+6.  Calcular SHA-256
+7.  Verificar deduplicació
+8.  Desar original (immutable)
+9.  Detectar dimensions reals
+10. Calcular aspect ratio real
+11. Comparar amb target ratio de la política
+12. Determinar adaptation_strategy:
+    → exact_fit → escalar directament
+    → crop_safe → crop centrat
+    → fit_with_background → canvas + background
+    → review_required → marcar, no bloquejar per defecte
+13. Generar variants per cada mida definida a la política
+14. Guardar metadades d'adaptació
+15. Log estructurat amb strategy i background_type
+16. Registrar mapping original_url → storage_url
+```
+
+---
+
+### Logs
+
+```json
+{
+  "event": "media_adapted",
+  "strategy": "fit_with_background",
+  "background_type": "blur",
+  "source_url": "...",
+  "target_variant": "hero",
+  "original_ratio": "3:2",
+  "target_ratio": "4:3",
+  "crop_loss_estimated": 0.42
+}
+```
+
+---
+
+### Warnings i mètriques
+
+Nou warning: `MEDIA_ADAPTED_WITH_BACKGROUND`
+
+Noves mètriques al `report.json`:
+
+```json
+{
+  "assets": {
+    "strategy_exact_fit": 80,
+    "strategy_crop_safe": 25,
+    "strategy_fit_with_background": 12,
+    "strategy_review_required": 3
+  }
+}
+```
+
+---
+
+### Prohibicions explícites
+
+- NO estirar imatges (distorsió).
+- NO crop agressiu sense control.
+- NO descartar imatges automàticament per ratio incorrecte.
+- NO deixar espais buits sense estil al canvas.
+- NO modificar l'original descarregat.
+
+---
+
+### Impacte en frontend
+
+Els layouts de Despertare (hero, card, og-image) han de:
+
+- Acceptar imatges que poden tenir padding visual (no assumir crop perfecte).
+- No re-escalar destructivament al frontend.
+- Respectar la composició generada per la media pipeline.
+
+La metadata `adaptation_strategy` i `padding_applied` es transmeten al model d'asset per permetre que el frontend prengui decisions de presentació si cal.
 
 ---
 
