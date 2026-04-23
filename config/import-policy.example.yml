@@ -1,0 +1,22 @@
+# import-policy.example.yml — Política d'importació per projecte
+# Copiar a config/import-policy.yml i ajustar.
+
+on_duplicate:
+  post: skip              # skip | update_draft | create_version | fail
+  page: update_draft
+  media: skip
+
+transform:
+  raw_html_warning_threshold: 0.20   # warning si >20% blocs són raw_html
+  raw_html_block_threshold: 0.50     # pending_review si >50%
+
+import:
+  default_status: draft              # draft | published
+  allow_ready_with_warnings: true    # importar ítems amb warnings no bloquejants
+
+author:
+  on_missing: pending                # pending | default | fail
+  default_author_id: null            # ID Despertare si on_missing=default
+
+taxonomy:
+  on_missing: pending                # pending | skip | fail

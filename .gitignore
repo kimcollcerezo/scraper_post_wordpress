@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Entorn
+.env
+
+# Config reals (no versionar si contenen URLs/credentials)
+config/sources.yml
+config/import-policy.yml
+config/media-policy.yml
+
+# Artifacts (no versionar; massa grans i efímers)
+artifacts/snapshots/**/*.json
+artifacts/import-batches/*/
+artifacts/seo/*.json
+artifacts/seo/*.csv
+
+# Mantenir estructura
+!artifacts/snapshots/.gitkeep
+!artifacts/import-batches/.gitkeep
+!artifacts/seo/.gitkeep
+!artifacts/context-history/.gitkeep

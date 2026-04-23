@@ -1,0 +1,13 @@
+# slugs.yml — Resolució de col·lisions de slug
+# Editar per cada migració. Veure ADR-0010.
+
+version: "1.0"
+
+resolutions: []
+# Exemple:
+# - source_id: 45
+#   source_slug: "contact"
+#   source_url: "https://example.com/contact/"
+#   conflict_with: null
+#   action: pending   # suffix | rename | map_to_existing | skip | pending
+#   resolved_slug: null

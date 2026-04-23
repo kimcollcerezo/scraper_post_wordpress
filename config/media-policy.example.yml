@@ -1,0 +1,39 @@
+# media-policy.example.yml — Política de media per projecte
+# Copiar a config/media-policy.yml i ajustar.
+
+hero:
+  aspect_ratio: "4:3"
+  min_width: 1200
+  min_height: 900
+  formats: [webp, jpg, jpeg, png]
+  max_bytes: 5242880  # 5MB
+  variants:
+    - name: hero
+      width: 1200
+      height: 900
+    - name: hero_mobile
+      width: 600
+      height: 450
+
+thumbnail:
+  aspect_ratio: "16:9"
+  variants:
+    - name: card
+      width: 800
+      height: 450
+    - name: card_sm
+      width: 400
+      height: 225
+
+og_image:
+  aspect_ratio: "1.91:1"
+  width: 1200
+  height: 630
+
+formats_allowed: [webp, jpg, jpeg, png, gif, svg]
+max_bytes_default: 10485760  # 10MB
+
+fail_on_media_error: false
+fail_on_size_exceeded: false
+fail_on_variant_error: false
+crop_loss_threshold: 0.30

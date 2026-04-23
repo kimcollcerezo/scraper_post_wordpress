@@ -1,0 +1,17 @@
+# locales.yml — Mapping de locales origen → Despertare
+# Editar per cada migració. Veure ADR-0010.
+
+version: "1.0"
+default_locale: "ca"
+
+mappings:
+  - source_locale: null
+    target_locale: "ca"
+    notes: "Posts sense locale explícit → locale per defecte"
+# Afegir:
+# - source_locale: "ca"
+#   target_locale: "ca"
+# - source_locale: "es"
+#   target_locale: "es"
+# - source_locale: "en_US"
+#   target_locale: "en"

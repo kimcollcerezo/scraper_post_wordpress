@@ -1,28 +1,27 @@
 # sources.example.yml — Exemple de configuració de fonts CMS
 # Copiar a config/sources.yml i ajustar valors reals.
-# IMPORTANT: sources.yml NO ha d'estar versionat si conté credencials.
+# IMPORTANT: sources.yml NO ha d'estar versionat si conté URLs privades.
 
 sources:
-  - id: example-wordpress
+  wordpress-main:
     type: wordpress
-    url: https://example.com
-    api_path: /wp-json/wp/v2/posts
-    auth: bearer  # bearer | basic | none
-    rate_limit_ms: 500
+    base_url: https://example.com
+    auth:
+      type: application_password        # application_password | basic | token | none
+      username_env: WORDPRESS_USERNAME
+      password_env: WORDPRESS_APPLICATION_PASSWORD
+    rate_limit_rps: 1                   # requests per segon
+    timeout_seconds: 20
     max_retries: 3
-    enabled: true
-
-  - id: example-cms
-    type: generic
-    url: https://other-cms.com
-    api_path: /api/posts
-    auth: none
-    rate_limit_ms: 1000
-    max_retries: 2
-    enabled: false
-
-destination:
-  type: wordpress  # wordpress | database | file
-  url: https://destination.com
-  api_path: /wp-json/wp/v2/posts
-  auth: bearer
+    backoff_factor: 2
+    allowed_media_domains:
+      - example.com
+      - cdn.example.com
+    extract:
+      post_types:
+        - post
+        - page
+      statuses:
+        - publish
+      include_drafts: false
+      per_page: 20

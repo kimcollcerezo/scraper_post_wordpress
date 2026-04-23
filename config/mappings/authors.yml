@@ -1,0 +1,15 @@
+# authors.yml — Mapping d'autors origen → Despertare
+# Editar per cada migració. Veure ADR-0010.
+
+version: "1.0"
+source_system: wordpress
+source_site_url: ""  # omplir amb URL del site origen
+
+mappings: []
+# Exemple:
+# - source_id: 5
+#   source_name: "Joan Puig"
+#   source_email: "joan@example.com"
+#   source_slug: "joan-puig"
+#   action: pending   # map | create | default | skip | pending
+#   target_author_id: null

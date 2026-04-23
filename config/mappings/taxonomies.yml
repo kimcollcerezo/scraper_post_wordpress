@@ -1,0 +1,16 @@
+# taxonomies.yml — Mapping de taxonomies origen → Despertare
+# Editar per cada migració. Veure ADR-0010.
+
+version: "1.0"
+source_system: wordpress
+source_site_url: ""
+
+mappings: []
+# Exemple:
+# - source_taxonomy: category
+#   source_id: 10
+#   source_name: "Notícies"
+#   source_slug: "noticies"
+#   action: pending   # map | create | skip | pending
+#   target_taxonomy: category
+#   target_term_id: null
