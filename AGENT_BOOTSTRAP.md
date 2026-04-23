@@ -1,95 +1,74 @@
 # Agent Bootstrap — Scraper Post WordPress
 
-Minimal entry point for agent operations.
+Worker Python per extreure posts de CMS i inserir-los en projectes destí.
 
 ---
 
-# Read First
+# Reading Order
 
-For any non-trivial task:
+1. `AGENT_BOOTSTRAP.md` (aquest fitxer)
+2. `CLAUDE.md`
+3. `PROJECT_CONTEXT.md` — només si la tasca ho requereix
+4. `docs/worker-contract.md` — per a tasques d'inserció o deduplicació
+5. `docs/redmine-policy.md` — per avaluar obligació de tracking
 
-1. `PROJECT_CONTEXT.md`
-2. `~/.claude/CODEX_CONTEXT.md`
-3. `~/.claude/CLAUDE.md`
-4. `~/.claude/governance/runtime/agent-kernel.md`
-5. `~/.claude/governance/runtime/documentation-impact-map.md`
-
-Load additional context ONLY if required.
+No carregar context addicional sense necessitat.
 
 ---
 
-# Local Contract
+# What the Agent Cannot Do
 
-- `PROJECT_CONTEXT.md` defines project reality
-- local rules override global ONLY for project specifics
-- security rules are never weakened
-- conflicts → must be surfaced before acting
-
----
-
-# Execution
-
-All work MUST follow global governance runtime:
-
-- classify task
-- evaluate tracking (Redmine)
-- evaluate documentation impact (ADR / docs / contracts / wiki)
-- implement minimal scope
-- validate
-- complete governance obligations
-
-→ Defined in:
-
-- `agent-kernel.md`
-- `documentation-impact-map.md`
+- Inserir dades sense deduplicació verificada
+- Executar en producció sense `ENV=production` explícit
+- Modificar dades externes sense dry-run disponible
+- Silenciar errors (`except: pass`)
+- Hardcodejar credencials
+- Fer retries infinits
 
 ---
 
-# Python Worker Safety (MANDATORY)
+# Stop Conditions
 
-Stop immediately if:
+Aturar i reportar si:
 
-- target CMS / API endpoint is unclear
-- credentials or auth method not confirmed
-- environment unknown (prod/staging/dev)
-- action impact is unclear (destructive insert, deduplication state)
-
----
-
-# Hard Stop Conditions
-
-Require explicit confirmation before:
-
-- destructive operations on data (`delete`, `truncate`, `overwrite`)
-- modification of credentials or `.env`
-- changes to rate limiting or retry logic in production
-- any production-impact action
+- font CMS no definida o no accessible
+- credencials absents o invàlides
+- entorn de destí no confirmat
+- acció destructiva sense confirmació explícita
+- idempotència no verificable
 
 ---
 
-# Quality Gates
+# When to Create/Update Redmine
 
-- data operations → validate idempotency
-- validation failure → fix, never bypass
+Consultar `docs/redmine-policy.md`.
 
----
-
-# Execution Policy
-
-- act autonomously
-- avoid micro-confirmations
-- prefer safe, reversible actions
-- production risk → always confirm
+Resum: arquitectura, nova font, canvi de schema, canvi de retry, bug reproductible → Redmine obligatori.
 
 ---
 
-# Session
+# Pipeline
 
-- start: `./codex-start.sh` if present
-- no assumption of persistence outside explicit context
+```
+ruff → pytest → validate.sh → check-idempotency.sh → execució
+```
+
+Error en qualsevol fase → STOP. No bypass.
+
+---
+
+# File Priority
+
+```
+docs/worker-contract.md  → contracte d'execució
+CLAUDE.md                → regles operatives
+PROJECT_CONTEXT.md       → context del projecte
+.env                     → credencials (mai al codi)
+config/sources.yml       → fonts CMS actives
+```
 
 ---
 
 # Principle
 
-Worker = correctness + idempotency + governance
+Minimal context. Explicit contracts. Idempotent execution. Fail-closed always.

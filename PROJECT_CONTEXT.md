@@ -1,70 +1,61 @@
 # Project Context — Scraper Post WordPress
 
-## Identitat
+## Identity
 
-- Nom: `Scraper Post WordPress`
-- Slug: `scraper-post-wordpress`
-- Tipus: `worker`
-- Descripció: Agent per extreure posts de WordPress o altres CMS i poder inserir en projectes
+- Name: Scraper Post WordPress
+- Slug: scraper-post-wordpress
+- Type: Python worker
+- Status: active
+- Redmine: agent-scrapper-post-wordpress-cms
 
-## Normativa
-
-- Global: `~/.claude/CLAUDE.md`
-- Local: `CLAUDE.md`
+---
 
 ## Stack
 
-- Python · worker · agents-prod-01 · Docker local
+Python · worker · Docker local · agents-prod-01 (178.104.54.56)
 
-## Ordre de precedència
+---
 
-1. codi real
-2. `PROJECT_CONTEXT.md`
-3. `CLAUDE.md` (projecte)
-4. `~/.claude/CLAUDE.md` (global)
-5. docs Redmine
+## Precedence
 
-## Carpetes clau
+`docs/worker-contract.md` → code → `PROJECT_CONTEXT.md` → `CLAUDE.md` → global
 
-- `src/` — lògica principal
-- `docs_custom/` — decisions i documentació
-- `scripts/` — scripts auxiliars
+Conflicte → indicar abans d'actuar.
 
-## Zones crítiques
+---
 
-- Connexió APIs externes (WordPress REST API, altres CMS)
-- Autenticació i credencials (`.env`)
-- Inserció de dades (idempotència, deduplicació)
-- Rate limiting / backoff
+## Critical Areas
 
-## Bootstrap operatiu
+No modificar sense context complet:
 
-- `AGENT_BOOTSTRAP.md` — ordre de lectura per agents
-- `codex-start.sh` — inici de sessió
-- Iniciar sessions via `./codex-start.sh`
+- deduplicació · schema de dades · `config/sources.yml` · `.env` · retry logic · connexió destí
 
-## Bones pràctiques (referència)
+---
 
-Consultar sota demanda a `~/.claude/project-templates/python/bones-practiques/`:
+## Key Scripts
 
-- Agents Python · Resiliència · Chaos testing
+- `scripts/run-worker.sh` — execució del worker
+- `scripts/validate.sh` — validació d'entorn i dependències
+- `scripts/test.sh` — tests (ruff + pytest)
+- `scripts/check-idempotency.sh` — verificació idempotència
 
-## Security baseline
+---
 
-- secrets fora de codi (`.env`)
-- credencials mai hardcodejades
-- fail closed en errors
-- validació de dades externes
+## Bootstrap
 
-## Redmine
+- Entry: `AGENT_BOOTSTRAP.md`
+- Session: `./codex-start.sh`
 
-- Projecte: `agent-scrapper-post-wordpress-cms`
+---
 
-## Servidor
+## Deep Docs (load on demand only)
 
-- Deploy: `agents-prod-01` (178.104.54.56)
-- SSH: `deploy@178.104.54.56`
+- `docs/worker-contract.md` — contracte d'execució
+- `docs/redmine-policy.md` — política de tracking
+- `docs/architecture.md` — arquitectura (quan existeixi)
 
-## Lifecycle
+---
 
-- Estat: actiu
+## Principle
+
+Minimal context. Explicit contracts. Idempotent execution. Fail-closed always.

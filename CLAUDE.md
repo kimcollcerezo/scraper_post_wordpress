@@ -1,60 +1,75 @@
 # Scraper Post WordPress
 
-Agent per extreure posts de WordPress o altres CMS i poder inserir en projectes
+Agent per extreure posts de WordPress o altres CMS i inserir-los en projectes destí.
 
 ---
 
-## Context
+# Principles
 
-Aquest fitxer defineix **regles operatives locals** per a aquest projecte Python.
-
-La governança global (ADR, Redmine, documentació, enforcement) es gestiona des de:
-→ `~/.claude/governance`
-
----
-
-## Principis
-
-- No inventar comportament no verificat
-- Context insuficient → STOP i demanar informació
-- Decisions rellevants → documentar a `docs_custom/`
-- Commits nets (sense referències a IA)
+1. Fail-closed — errors explícits, mai silenciosos
+2. Idempotent — cap inserció sense deduplicació prèvia
+3. Minimal context — carregar només el necessari
+4. Credentials outside code — sempre via `.env`
+5. No external mutation without dry-run support
 
 ---
 
-## Execution model
+# Precedence
 
-- Entendre mínim context necessari
-- Executar sense exploració innecessària
-- Respectar contractes i estructura existent
-- Validar abans de considerar la tasca completada
+`docs/worker-contract.md` → `CLAUDE.md` → `PROJECT_CONTEXT.md` → global `~/.claude/CLAUDE.md`
 
----
-
-## Python rules
-
-- Codi clar, explícit i determinista
-- Errors explícits (no silenciosos)
-- Evitar side-effects ocults
-- Separar:
-  - IO / infra
-  - lògica de negoci
+Conflicte → indicar abans d'actuar.
 
 ---
 
-## Tooling
+# Execution Flow
 
-- Lint → ruff
-- Format → ruff format
-- Tests → pytest
-- Types → mypy (si aplica)
+1. Llegir `AGENT_BOOTSTRAP.md` i classificar la tasca
+2. Validar entorn i credencials (`.env`)
+3. Executar amb scope mínim
+4. Verificar idempotència abans de qualsevol inserció
+5. Logs estructurats de tota operació
+6. Validar resultat (`scripts/validate.sh`)
+7. Avaluar obligació Redmine (veure `docs/redmine-policy.md`)
 
 ---
 
-## Notes
+# Worker Rules (MANDATORY)
 
-- Redmine, ADR, documentació i tracking:
-  → gestionats automàticament pel sistema de governança
+- No `except: pass` ni `except Exception` sense log explícit
+- No credencials hardcodejades — sempre `.env`
+- No inserció sense comprovació de duplicat
+- No retry sense límit màxim de reintents
+- No scraping sense rate limiting
+- No mutació de dades externes sense confirmació explícita
+- No execució en producció sense `ENV=production` explícit
+- Logs estructurats (JSON o clau=valor) en tota operació
+- Dry-run ha de ser possible per a qualsevol operació d'escriptura
 
-- Aquest fitxer NO defineix governança
-  → només comportament local de desenvolupament
+---
+
+# Critical Areas
+
+No modificar sense context complet:
+
+- lògica de deduplicació
+- schema de dades
+- configuració de fonts CMS (`config/sources.yml`)
+- credencials i `.env`
+- retry / backoff logic
+- connexió al destí d'inserció
+
+---
+
+# Tooling
+
+- Lint / format → `ruff`
+- Tests → `pytest`
+- Validació → `scripts/validate.sh`
+- Idempotència → `scripts/check-idempotency.sh`
+
+---
+
+# Principle
+
+Minimal context. Explicit contracts. Idempotent execution. Fail-closed always.
