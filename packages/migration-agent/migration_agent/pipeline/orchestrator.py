@@ -13,7 +13,8 @@ from migration_agent.config.loader import load_import_policy, load_media_policy,
 from migration_agent.logger import log
 from migration_agent.models.batch import BatchReport
 from migration_agent.models.intermediate import IntermediateItem
-from migration_agent.pipeline.media import CROP_SAFE, EXACT_FIT, FIT_WITH_BACKGROUND, process_item_media
+from migration_agent.pipeline.import_client import ImportApiClient
+from migration_agent.pipeline.media import CROP_SAFE, EXACT_FIT, FIT_WITH_BACKGROUND, AssetResult, process_item_media
 from migration_agent.pipeline.snapshot import build_intermediate, save_snapshot
 from migration_agent.pipeline.transform import transform
 from migration_agent.pipeline.validate import validate
@@ -235,12 +236,147 @@ class Pipeline:
         return report
 
     def _run_import(self, items: list[IntermediateItem], report: BatchReport) -> BatchReport:
-        """Import real — no implementat en MVP Sprint 1."""
-        log.warn(
-            "import_not_implemented",
-            batch_id=self.batch_id,
-            detail="Import API integration pending Sprint 2",
-        )
+        """Import real via Import API de Despertare (ADR-0009).
+
+        Seqüència per ítem:
+          1. Authors
+          2. Taxonomies (categories + tags)
+          3. Media (hero + inline)
+          4. Content
+          5. Redirects (batch final)
+        """
+        policy = self.policy
+        on_duplicate = policy.get("on_duplicate", "skip")
+        import_as_status = policy.get("import_as_status", "draft")
+
+        try:
+            client = ImportApiClient.from_env()
+        except RuntimeError as exc:
+            log.error("import_api_client_init_failed", detail=str(exc), batch_id=self.batch_id)
+            for item in items:
+                item.set_status("failed")
+                item.add_error("IMPORT_API_UNREACHABLE")
+                report.total_failed += 1
+            return report
+
+        redirects: list[dict[str, str]] = []
+
+        with client:
+            for item in items:
+                status = item.import_state.import_status
+                if status in ("blocked", "failed"):
+                    log.info(
+                        "import_item_skipped",
+                        batch_id=self.batch_id,
+                        source_id=str(item.source.id),
+                        reason=status,
+                    )
+                    report.total_skipped += 1
+                    continue
+
+                # 1. Author
+                if item.author and item.author.name:
+                    auth_result = client.import_author(item.author, self.batch_id)
+                    if auth_result.author_id:
+                        item.author.mapping_status = "complete"
+                    elif auth_result.errors:
+                        item.add_warning(f"AUTHOR_IMPORT_{auth_result.errors[0]}")
+
+                # 2. Taxonomies
+                for cat in item.taxonomies.categories:
+                    r = client.import_taxonomy_term(cat, "category", self.batch_id)
+                    if r.taxonomy_term_id:
+                        cat.mapping_status = "complete"
+
+                for tag in item.taxonomies.tags:
+                    r = client.import_taxonomy_term(tag, "tag", self.batch_id)
+                    if r.taxonomy_term_id:
+                        tag.mapping_status = "complete"
+
+                # 3. Media (hero)
+                if item.hero and item.hero.source_url:
+                    fake_asset = AssetResult(
+                        source_url=item.hero.source_url,
+                        mime_type=item.hero.mime_type,
+                        width=item.hero.width,
+                        height=item.hero.height,
+                        hash=item.hero.hash,
+                        import_status="imported",
+                    )
+                    media_r = client.import_media(item.hero, fake_asset, self.batch_id)
+                    if media_r.media_asset_id:
+                        item.hero.media_asset_id = media_r.media_asset_id
+                        item.hero.new_url = media_r.storage_url
+                        item.hero.import_status = media_r.result
+                    elif media_r.errors:
+                        item.add_warning(f"HERO_MEDIA_{media_r.errors[0]}")
+
+                # 4. Content
+                content_result = client.import_content(item, on_duplicate, import_as_status)
+
+                if content_result.result in ("created", "updated"):
+                    item.set_status("imported")
+                    item.import_state.imported_at = datetime.now(timezone.utc).isoformat()
+                    item.import_state.target_entity_id = content_result.content_item_id
+                    item.import_state.target_url = content_result.target_url
+                    report.total_imported += 1
+                    report.assets_imported += 1 if item.hero else 0
+
+                    # Redirect: legacy_url → target_url
+                    if item.routing.legacy_url and content_result.target_url:
+                        redirects.append({
+                            "from": item.routing.legacy_url,
+                            "to": content_result.target_url,
+                            "type": "301",
+                        })
+
+                    for w in content_result.warnings:
+                        item.add_warning(w)
+                        report.increment_warning(w)
+
+                    log.info(
+                        "item_imported",
+                        batch_id=self.batch_id,
+                        source_id=str(item.source.id),
+                        result=content_result.result,
+                        content_item_id=content_result.content_item_id,
+                        target_url=content_result.target_url,
+                    )
+
+                elif content_result.result == "skipped":
+                    item.set_status("skipped")
+                    report.total_skipped += 1
+                    log.info(
+                        "item_skipped",
+                        batch_id=self.batch_id,
+                        source_id=str(item.source.id),
+                        reason="on_duplicate=skip",
+                    )
+
+                else:
+                    item.set_status("failed")
+                    for e in content_result.errors:
+                        item.add_error(e)
+                        report.increment_error(e)
+                    report.total_failed += 1
+                    log.error(
+                        "item_import_failed",
+                        batch_id=self.batch_id,
+                        source_id=str(item.source.id),
+                        errors=content_result.errors,
+                    )
+
+            # 5. Redirects — batch final
+            if redirects:
+                redir_result = client.import_redirects(redirects, self.batch_id)
+                report.redirects_suggested = len(redirects)
+                log.info(
+                    "redirects_imported",
+                    batch_id=self.batch_id,
+                    created=redir_result.get("created", 0),
+                    skipped=redir_result.get("skipped", 0),
+                )
+
         return report
 
     def _save_artifacts(
