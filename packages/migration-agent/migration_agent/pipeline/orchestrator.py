@@ -14,6 +14,7 @@ from migration_agent.logger import log
 from migration_agent.models.batch import BatchReport
 from migration_agent.models.intermediate import IntermediateItem
 from migration_agent.pipeline.import_client import ImportApiClient
+from migration_agent.pipeline.mappings import MappingResolver
 from migration_agent.pipeline.media import CROP_SAFE, EXACT_FIT, FIT_WITH_BACKGROUND, AssetResult, process_item_media
 from migration_agent.pipeline.snapshot import build_intermediate, save_snapshot
 from migration_agent.pipeline.transform import transform
@@ -58,6 +59,11 @@ class Pipeline:
         self._config_dir = config_dir
         self.policy = load_import_policy(config_dir)
         self._started_at = datetime.now(timezone.utc).isoformat()
+
+        # Carregar MappingResolver (ADR-0010) — opcional si no existeix el directori
+        _root = Path(__file__).resolve().parents[5]
+        _mappings_dir = (config_dir or _root / "config") / "mappings"
+        self._resolver = MappingResolver(_mappings_dir) if _mappings_dir.exists() else None
 
     def run(self) -> BatchReport:
         log.info("batch_started", batch_id=self.batch_id, mode=self.mode, source=self.source_name)
@@ -108,8 +114,8 @@ class Pipeline:
                 # Fase 3 — Transform
                 item = transform(item, self.policy)
 
-                # Fase 4 — Validate
-                item = validate(item, self.policy)
+                # Fase 4 — Validate + mapping resolution (ADR-0010)
+                item = validate(item, self.policy, resolver=self._resolver)
 
                 # Fase 4b — Media normalization (dry-run inclòs: processa localment)
                 assets_count = len(item.media) + (1 if item.hero else 0)
@@ -207,6 +213,10 @@ class Pipeline:
                     "errors": ["PIPELINE_EXCEPTION"],
                     "detail": str(exc),
                 })
+
+        # Generar pending mappings file si n'hi ha (ADR-0010)
+        if self._resolver is not None:
+            self._resolver.write_pending(self.batch_id)
 
         # Fase 5 — Import (només si no és dry-run)
         if self.mode not in ("dry-run", "extract-only", "validate"):
