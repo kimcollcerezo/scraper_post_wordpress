@@ -82,6 +82,9 @@ def build_intermediate(
 
     author: AuthorRef | None = None
     if a := normalized.get("author"):
+        # Si tenim nom i slug, les dades són suficients per crear l'autor a Despertare.
+        # Només queda "pending" si falten dades mínimes.
+        has_min_data = bool(a.get("name") and a.get("slug"))
         author = AuthorRef(
             source_id=a.get("source_id"),
             name=a.get("name"),
@@ -89,6 +92,7 @@ def build_intermediate(
             email=a.get("email"),
             bio=a.get("bio"),
             avatar_url=a.get("avatar_url"),
+            mapping_status="create" if has_min_data else "pending",
         )
 
     cats = [

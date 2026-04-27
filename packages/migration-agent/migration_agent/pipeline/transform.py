@@ -21,7 +21,8 @@ def transform(item: IntermediateItem, policy: dict[str, Any] | None = None) -> I
         item.content.blocks = []
         return item
 
-    blocks = _html_to_blocks(raw_html)
+    internal_domain = _domain_from_url(item.source.site_url)
+    blocks = _html_to_blocks(raw_html, internal_domain=internal_domain)
     item.content.blocks = blocks
 
     # Calcular raw_html_ratio
@@ -45,7 +46,7 @@ def transform(item: IntermediateItem, policy: dict[str, Any] | None = None) -> I
     return item
 
 
-def _html_to_blocks(html: str) -> list[Block]:
+def _html_to_blocks(html: str, internal_domain: str = "") -> list[Block]:
     soup = BeautifulSoup(html, "lxml")
     body = soup.find("body") or soup
     blocks: list[Block] = []
@@ -53,14 +54,14 @@ def _html_to_blocks(html: str) -> list[Block]:
     for el in body.children:
         if not isinstance(el, Tag):
             continue
-        block = _tag_to_block(el)
+        block = _tag_to_block(el, internal_domain=internal_domain)
         if block:
             blocks.append(block)
 
     return blocks
 
 
-def _tag_to_block(el: Tag) -> Block | None:
+def _tag_to_block(el: Tag, internal_domain: str = "") -> Block | None:
     tag = el.name.lower() if el.name else ""
 
     if tag in BLOCKED_TAGS:
@@ -70,7 +71,7 @@ def _tag_to_block(el: Tag) -> Block | None:
         return Block(type="heading", data={"level": int(tag[1]), "text": el.get_text(strip=True)})
 
     if tag == "p":
-        inner = _serialize_inline(el)
+        inner = _serialize_inline(el, internal_domain=internal_domain)
         if not inner.strip():
             return None
         return Block(type="paragraph", data={"html": f"<p>{inner}</p>"})
@@ -80,7 +81,7 @@ def _tag_to_block(el: Tag) -> Block | None:
         cite_text = cite.get_text(strip=True) if cite else None
         if cite:
             cite.decompose()
-        inner = _serialize_inline(el)
+        inner = _serialize_inline(el, internal_domain=internal_domain)
         return Block(type="quote", data={"html": inner, "citation": cite_text})
 
     if tag in ("ul", "ol"):
@@ -142,7 +143,7 @@ def _tag_to_block(el: Tag) -> Block | None:
         child_blocks: list[Block] = []
         for child in el.children:
             if isinstance(child, Tag):
-                b = _tag_to_block(child)
+                b = _tag_to_block(child, internal_domain=internal_domain)
                 if b:
                     child_blocks.append(b)
         if child_blocks:
@@ -164,18 +165,43 @@ def _tag_to_block(el: Tag) -> Block | None:
     )
 
 
-def _serialize_inline(el: Tag) -> str:
-    """Serialitza contingut inline mantenint tags permesos."""
+def _serialize_inline(el: Tag, internal_domain: str = "") -> str:
+    """Serialitza contingut inline mantenint tags permesos.
+
+    Afegeix rel="nofollow" als <a> que apunten a dominis externs.
+    """
     result = []
     for child in el.children:
         if isinstance(child, Tag):
             if child.name in ALLOWED_INLINE_TAGS:
-                result.append(str(child))
+                if child.name == "a":
+                    result.append(_serialize_anchor(child, internal_domain))
+                else:
+                    result.append(str(child))
             else:
                 result.append(child.get_text())
         else:
             result.append(str(child))
     return "".join(result)
+
+
+def _serialize_anchor(a: Tag, internal_domain: str = "") -> str:
+    """Serialitza un <a> afegint rel="nofollow" si l'enllaç és extern."""
+    href = a.get("href", "") or ""
+    is_external = (
+        href.startswith("http")
+        and bool(internal_domain)
+        and internal_domain not in href
+    )
+    if is_external:
+        existing_rel = a.get("rel", [])
+        if isinstance(existing_rel, str):
+            existing_rel = existing_rel.split()
+        rels = list(existing_rel)
+        if "nofollow" not in rels:
+            rels.append("nofollow")
+        a["rel"] = " ".join(rels)
+    return str(a)
 
 
 def _detect_embed_provider(url: str) -> str | None:
@@ -195,6 +221,11 @@ def _detect_embed_provider(url: str) -> str | None:
         if domain in url:
             return name
     return None
+
+
+def _domain_from_url(url: str) -> str:
+    m = re.match(r"https?://([^/]+)", url or "")
+    return m.group(1) if m else ""
 
 
 def _derive_seo(item: IntermediateItem) -> None:

@@ -118,11 +118,13 @@ def _validate_author(
             return  # l'API crearà l'autor
         # action == "pending" → cau al comportament per defecte
 
+    # "create" significa que tenim dades suficients — l'Import API el crearà
     if item.author is None or item.author.mapping_status == "pending":
-        if on_missing == "fail":
-            item.add_error("AUTHOR_MAPPING_REQUIRED")
-        else:
-            item.add_warning("AUTHOR_PENDING")
+        if not item.author or not item.author.name:
+            if on_missing == "fail":
+                item.add_error("AUTHOR_MAPPING_REQUIRED")
+            else:
+                item.add_warning("AUTHOR_PENDING")
 
 
 def _validate_taxonomies(
