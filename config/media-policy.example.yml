@@ -1,12 +1,117 @@
 # media-policy.example.yml — Política de media per projecte
 # Copiar a config/media-policy.yml i ajustar.
 
+# ── Formats i mides globals ────────────────────────────────────────────────────
+
+formats_allowed: [webp, jpg, jpeg, png, gif, svg]
+max_bytes_default: 10485760  # 10MB
+
+fail_on_media_error: false
+fail_on_size_exceeded: false
+fail_on_variant_error: false
+
+# ── Política per tipus de contingut ────────────────────────────────────────────
+#
+# Estructura: content_types.<type>.<role>
+#   type: post | page | (qualsevol post_type WordPress)
+#   role: hero | content_image | og_image | thumbnail
+#
+# Si un type no té política pròpia, s'usa el rol genèric del nivell arrel.
+
+content_types:
+
+  post:
+    hero:
+      aspect_ratio: "4:3"
+      min_width: 1200
+      min_height: 900
+      formats: [webp, jpg, jpeg, png]
+      max_bytes: 5242880   # 5MB
+      variants:
+        - name: hero
+          width: 1200
+          height: 900
+        - name: hero_mobile
+          width: 600
+          height: 450
+        - name: hero_og
+          width: 1200
+          height: 630
+
+    content_image:
+      # Imatges embegudes dins el cos del post
+      # No s'aplica aspect_ratio fix — es valida format i mida màxima
+      formats: [webp, jpg, jpeg, png, gif, svg]
+      max_bytes: 3145728   # 3MB
+      variants:
+        - name: full
+          width: 1200
+          height: 0        # 0 = proporcional (sense crop)
+        - name: medium
+          width: 800
+          height: 0
+        - name: thumbnail
+          width: 400
+          height: 0
+
+    og_image:
+      aspect_ratio: "1.91:1"
+      min_width: 1200
+      min_height: 630
+      formats: [webp, jpg, jpeg, png]
+      variants:
+        - name: og_image
+          width: 1200
+          height: 630
+
+  page:
+    hero:
+      # Pàgines: hero més ampli, sense restricció de ratio fix
+      aspect_ratio: "16:9"
+      min_width: 1920
+      min_height: 1080
+      formats: [webp, jpg, jpeg, png]
+      max_bytes: 8388608   # 8MB
+      variants:
+        - name: hero_full
+          width: 1920
+          height: 1080
+        - name: hero_desktop
+          width: 1440
+          height: 810
+        - name: hero_mobile
+          width: 768
+          height: 432
+
+    content_image:
+      formats: [webp, jpg, jpeg, png, gif, svg]
+      max_bytes: 5242880   # 5MB
+      variants:
+        - name: full
+          width: 1440
+          height: 0
+        - name: medium
+          width: 960
+          height: 0
+
+    og_image:
+      aspect_ratio: "1.91:1"
+      min_width: 1200
+      min_height: 630
+      formats: [webp, jpg, jpeg, png]
+      variants:
+        - name: og_image
+          width: 1200
+          height: 630
+
+# ── Rols genèrics (fallback si el content_type no té política pròpia) ──────────
+
 hero:
   aspect_ratio: "4:3"
   min_width: 1200
   min_height: 900
   formats: [webp, jpg, jpeg, png]
-  max_bytes: 5242880  # 5MB
+  max_bytes: 5242880
   variants:
     - name: hero
       width: 1200
@@ -27,19 +132,12 @@ thumbnail:
 
 og_image:
   aspect_ratio: "1.91:1"
-  width: 1200
-  height: 630
+  min_width: 1200
+  min_height: 630
   variants:
     - name: og_image
       width: 1200
       height: 630
-
-formats_allowed: [webp, jpg, jpeg, png, gif, svg]
-max_bytes_default: 10485760  # 10MB
-
-fail_on_media_error: false
-fail_on_size_exceeded: false
-fail_on_variant_error: false
 
 # ── Adaptation strategy (ADR-0006) ─────────────────────────────────────────────
 adaptation:

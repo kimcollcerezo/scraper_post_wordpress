@@ -23,6 +23,7 @@ from migration_agent.pipeline.media import (
     _dominant_color,
     _hex_to_rgb,
     _parse_ratio,
+    _policy_for_role,
     _ratio_ok,
     _ratio_str,
     detect_adaptation_strategy,
@@ -293,3 +294,122 @@ def test_process_asset_no_source_url(tmp_path):
     result = process_asset(media_ref, _base_policy(), _base_source_config(), tmp_path)
     assert result.import_status == "failed"
     assert "MEDIA_DOWNLOAD_FAILED" in result.errors
+
+
+# ── Tests _policy_for_role amb content_types ───────────────────────────────────
+
+def _policy_with_content_types() -> dict:
+    return {
+        "formats_allowed": ["jpg", "jpeg", "png", "webp", "gif", "svg"],
+        "max_bytes_default": 10 * 1024 * 1024,
+        "adaptation": {
+            "enable_background_fit": True,
+            "default_background": "blur",
+            "crop_loss_threshold": 0.30,
+            "fallback_background_color": "#f5f5f5",
+        },
+        "content_types": {
+            "post": {
+                "hero": {
+                    "aspect_ratio": "4:3",
+                    "min_width": 1200,
+                    "min_height": 900,
+                    "variants": [{"name": "hero", "width": 1200, "height": 900}],
+                },
+                "content_image": {
+                    "variants": [{"name": "full", "width": 1200, "height": 0}],
+                },
+            },
+            "page": {
+                "hero": {
+                    "aspect_ratio": "16:9",
+                    "min_width": 1920,
+                    "min_height": 1080,
+                    "variants": [{"name": "hero_full", "width": 1920, "height": 1080}],
+                },
+                "content_image": {
+                    "variants": [{"name": "full", "width": 1440, "height": 0}],
+                },
+            },
+        },
+        "hero": {
+            "aspect_ratio": "4:3",
+            "min_width": 800,
+            "min_height": 600,
+            "variants": [{"name": "hero_generic", "width": 800, "height": 600}],
+        },
+    }
+
+
+def test_policy_for_role_post_hero():
+    policy = _policy_with_content_types()
+    p = _policy_for_role("hero", policy, content_type="post")
+    assert p is not None
+    assert p["aspect_ratio"] == "4:3"
+    assert p["variants"][0]["name"] == "hero"
+
+
+def test_policy_for_role_page_hero():
+    policy = _policy_with_content_types()
+    p = _policy_for_role("hero", policy, content_type="page")
+    assert p is not None
+    assert p["aspect_ratio"] == "16:9"
+    assert p["variants"][0]["name"] == "hero_full"
+
+
+def test_policy_for_role_post_content_image():
+    policy = _policy_with_content_types()
+    p = _policy_for_role("content_image", policy, content_type="post")
+    assert p is not None
+    assert p["variants"][0]["width"] == 1200
+
+
+def test_policy_for_role_page_content_image():
+    policy = _policy_with_content_types()
+    p = _policy_for_role("content_image", policy, content_type="page")
+    assert p is not None
+    assert p["variants"][0]["width"] == 1440
+
+
+def test_policy_for_role_inline_maps_to_content_image():
+    policy = _policy_with_content_types()
+    p = _policy_for_role("inline", policy, content_type="post")
+    assert p is not None
+    assert p["variants"][0]["name"] == "full"
+
+
+def test_policy_for_role_unknown_type_fallback_to_generic():
+    """Tipus desconegut (custom post type) cau al rol genèric de l'arrel."""
+    policy = _policy_with_content_types()
+    p = _policy_for_role("hero", policy, content_type="custom_cpt")
+    assert p is not None
+    assert p["variants"][0]["name"] == "hero_generic"
+
+
+def test_policy_for_role_no_content_type_fallback():
+    """Sense content_type, s'usa el rol genèric."""
+    policy = _policy_with_content_types()
+    p = _policy_for_role("hero", policy, content_type="")
+    assert p is not None
+    assert p["variants"][0]["name"] == "hero_generic"
+
+
+def test_policy_for_role_attachment_returns_none():
+    policy = _policy_with_content_types()
+    assert _policy_for_role("attachment", policy, content_type="post") is None
+
+
+def test_process_asset_uses_content_type(tmp_path):
+    """process_asset amb content_type='page' usa la política de page."""
+    data = _make_image_bytes(1920, 1080)  # 16:9 perfecte per page.hero
+    policy = _policy_with_content_types()
+    media_ref = MediaRef(source_url="https://example.com/img.jpg", role="hero")
+    with patch("migration_agent.pipeline.media._download", return_value=data):
+        with patch("migration_agent.pipeline.media._seen_hashes", {}):
+            result = process_asset(
+                media_ref, policy, _base_source_config(), tmp_path,
+                role="hero", content_type="page",
+            )
+    assert result.import_status == "imported"
+    assert len(result.variants) == 1
+    assert result.variants[0].name == "hero_full"

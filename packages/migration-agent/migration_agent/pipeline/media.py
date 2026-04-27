@@ -327,6 +327,7 @@ def process_asset(
     storage_dir: Path,
     role: str = "inline",
     batch_id: str = "",
+    content_type: str = "",
 ) -> AssetResult:
     """
     Processa un MediaRef complet:
@@ -415,8 +416,8 @@ def process_asset(
     orig_path.write_bytes(data)
     result.original_path = orig_path
 
-    # Determinar variants a generar per role
-    role_policy = _policy_for_role(role, media_policy)
+    # Determinar variants a generar per role + content_type
+    role_policy = _policy_for_role(role, media_policy, content_type=content_type)
     if not role_policy:
         # Sense política específica → desar original i marcar importat
         result.adaptation_strategy = EXACT_FIT
@@ -527,18 +528,41 @@ def process_asset(
     return result
 
 
-def _policy_for_role(role: str, policy: dict[str, Any]) -> dict[str, Any] | None:
-    mapping = {
+def _policy_for_role(
+    role: str,
+    policy: dict[str, Any],
+    content_type: str = "",
+) -> dict[str, Any] | None:
+    """Retorna la política del rol per al content_type indicat.
+
+    Ordre de cerca:
+      1. content_types.<content_type>.<role_key>  (específic per tipus)
+      2. <role_key>  (genèric a l'arrel)
+      3. None (sense política → desar original sense variants)
+
+    inline/gallery/attachment sense content_type → None (no s'aplica aspecte fix).
+    """
+    # Mapatge role → clau de política
+    role_to_key = {
         "hero": "hero",
         "og_image": "og_image",
         "card": "thumbnail",
-        "inline": None,
-        "gallery": None,
+        "content_image": "content_image",
+        "inline": "content_image",   # inline dins cos → content_image
+        "gallery": "content_image",
         "attachment": None,
     }
-    key = mapping.get(role)
+    key = role_to_key.get(role)
     if key is None:
         return None
+
+    # 1. Cerca específica per content_type
+    if content_type:
+        type_policy = policy.get("content_types", {}).get(content_type, {})
+        if key in type_policy:
+            return type_policy[key]
+
+    # 2. Fallback genèric
     return policy.get(key)
 
 
@@ -551,13 +575,18 @@ def process_item_media(
     storage_dir: Path,
     batch_id: str = "",
 ) -> dict[str, list[AssetResult]]:
-    """Processa tots els assets d'un IntermediateItem."""
+    """Processa tots els assets d'un IntermediateItem.
+
+    Passa el content_type (item.source.type) a process_asset perquè
+    s'apliqui la política específica per tipus (post/page/etc).
+    """
     results: dict[str, list[AssetResult]] = {"hero": [], "media": []}
+    content_type = item.source.type  # "post" | "page" | custom
 
     if item.hero and item.hero.source_url:
         r = process_asset(
             item.hero, media_policy, source_config, storage_dir,
-            role="hero", batch_id=batch_id,
+            role="hero", batch_id=batch_id, content_type=content_type,
         )
         results["hero"].append(r)
         if r.warnings:
@@ -567,7 +596,7 @@ def process_item_media(
     for media_ref in item.media:
         r = process_asset(
             media_ref, media_policy, source_config, storage_dir,
-            role=media_ref.role, batch_id=batch_id,
+            role=media_ref.role, batch_id=batch_id, content_type=content_type,
         )
         results["media"].append(r)
         if r.warnings:
